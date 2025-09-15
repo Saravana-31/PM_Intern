@@ -13,7 +13,7 @@ function App() {
     location: [],
     skills: []
   });
-  const [results, setResults] = useState([]);
+  const [results, setResults] = useState({ best_fit: [], growth: [], alternative: [] });
   const [language, setLanguage] = useState("en");
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState({
@@ -49,7 +49,7 @@ function App() {
     debounceRefs.current[field] = setTimeout(async () => {
       if (query.length >= 2) {
         try {
-          const response = await axios.get(`http://127.0.0.1:5000/autocomplete/${field}?q=${query}`);
+          const response = await axios.get(`http://127.0.0.1:4000/autocomplete/${field}?q=${query}`);
           setSuggestions(prev => ({ ...prev, [field]: response.data }));
         } catch (error) {
           console.error(`Error fetching ${field} suggestions:`, error);
@@ -84,19 +84,39 @@ function App() {
 
   const handleSubmit = async () => {
     setLoading(true);
+    const submitData = {
+      education: formData.education[0] || "",
+      department: formData.department[0] || "",
+      sector: formData.sector[0] || "",
+      location: formData.location[0] || "",
+      skills: formData.skills
+    };
     try {
-      const submitData = {
-        education: formData.education[0] || "", // Take first education if multiple
-        department: formData.department[0] || "", // Take first department if multiple
-        sector: formData.sector[0] || "", // Take first sector if multiple
-        location: formData.location[0] || "", // Take first location if multiple
-        skills: formData.skills // Skills as array
-      };
-      const res = await axios.post("http://127.0.0.1:5000/find_internships", submitData);
-      setResults(res.data);
+      // Try Node backend first
+      const resNode = await axios.post("http://127.0.0.1:4000/recommend", submitData, { timeout: 4000 });
+      const data = resNode?.data;
+      const hasAny = !!(data && ((data.best_fit && data.best_fit.length) || (data.growth && data.growth.length) || (data.alternative && data.alternative.length)));
+      if (hasAny) {
+        setResults({
+          best_fit: data.best_fit || [],
+          growth: data.growth || [],
+          alternative: data.alternative || []
+        });
+        return;
+      }
+      // Fall through to Flask if empty
+    } catch (e) {
+      // Ignore and fall back to Flask
+    }
+    try {
+      // Fallback: Flask backend
+      const resFlask = await axios.post("http://127.0.0.1:5000/find_internships", submitData, { timeout: 4000 });
+      const arr = Array.isArray(resFlask.data) ? resFlask.data : [];
+      // Map to categories: treat as best_fit list
+      setResults({ best_fit: arr.filter(x => (x && typeof x.score === 'number' ? x.score > 0 : true)), growth: [], alternative: [] });
     } catch (error) {
-      console.error("Error fetching internships:", error);
-      setResults([]);
+      console.error("Error fetching internships (both backends):", error);
+      setResults({ best_fit: [], growth: [], alternative: [] });
     } finally {
       setLoading(false);
     }
@@ -168,7 +188,9 @@ function App() {
   };
 
   const InternshipCard = ({ internship, index }) => {
-    const cardText = `${t.internshipTitle}: ${internship.title}. ${t.company}: ${internship.company}. ${t.location}: ${internship.location}. ${t.stipend}: ${internship.stipend}. ${t.skills}: ${internship.skills.join(", ")}. ${t.score}: ${internship.score}. ${t.whyRecommended}: ${internship.reasons.join(". ")}`;
+    const reasonsOrNarratives = (internship.narratives && internship.narratives.length ? internship.narratives : (internship.reasons || []));
+    const skillsArray = Array.isArray(internship.skills) ? internship.skills : [];
+    const cardText = `${t.internshipTitle}: ${internship.title || ''}. ${t.company}: ${internship.company || ''}. ${t.location}: ${internship.location || ''}. ${t.stipend}: ${internship.stipend || ''}. ${t.skills}: ${skillsArray.join(", ")}. ${t.score}: ${internship.score ?? 0}. ${t.whyRecommended}: ${reasonsOrNarratives.join(". ")}`;
 
     const getSpeechButtonIcon = () => {
       if (speechState.currentCard === index) {
@@ -210,7 +232,7 @@ function App() {
           <div className="card-row">
             <span className="label">{t.skills}:</span>
             <div className="skills-container">
-              {internship.skills.map((skill, idx) => (
+              {skillsArray.map((skill, idx) => (
                 <span key={idx} className="skill-tag">{skill}</span>
               ))}
             </div>
@@ -224,7 +246,7 @@ function App() {
           <div className="reasons-section">
             <h4 className="reasons-title">{t.whyRecommended}</h4>
             <ul className="reasons-list">
-              {internship.reasons.map((reason, idx) => (
+              {reasonsOrNarratives.map((reason, idx) => (
                 <li key={idx} className="reason-item">✔ {reason}</li>
               ))}
             </ul>
@@ -313,20 +335,43 @@ function App() {
         </div>
 
         <div className="results-section">
-          {results.filter(internship => internship.score > 0).length > 0 ? (
-            <div className="results-grid">
-              {results
-                .filter(internship => internship.score > 0)
-                .map((internship, index) => (
-                  <InternshipCard key={index} internship={internship} index={index} />
-                ))}
+          {(!loading && (!results?.best_fit?.length && !results?.growth?.length && !results?.alternative?.length)) ? (
+            <div className="no-results">
+              <p>{t.noResults}</p>
             </div>
           ) : (
-            !loading && (
-              <div className="no-results">
-                <p>{t.noResults}</p>
-              </div>
-            )
+            <>
+              {results?.best_fit?.length > 0 && (
+                <section>
+                  <h2 className="app-title" style={{ fontSize: '1.6rem' }}>🎯 Best Fit</h2>
+                  <div className="results-grid">
+                    {results.best_fit.map((internship, index) => (
+                      <InternshipCard key={`best-${index}`} internship={internship} index={index} />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {results?.growth?.length > 0 && (
+                <section>
+                  <h2 className="app-title" style={{ fontSize: '1.6rem' }}>🚀 Growth Potential</h2>
+                  <div className="results-grid">
+                    {results.growth.map((internship, index) => (
+                      <InternshipCard key={`growth-${index}`} internship={internship} index={index} />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {results?.alternative?.length > 0 && (
+                <section>
+                  <h2 className="app-title" style={{ fontSize: '1.6rem' }}>🌍 Alternative Path</h2>
+                  <div className="results-grid">
+                    {results.alternative.map((internship, index) => (
+                      <InternshipCard key={`alt-${index}`} internship={internship} index={index} />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
           )}
         </div>
       </main>
