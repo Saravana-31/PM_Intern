@@ -78,42 +78,44 @@ const MultiTagInput = ({
   );
 
   return (
-    <div className="form-group">
-      <label className="form-label">{label}</label>
-      <div className="multi-tag-container">
-        <div className="tags-input-wrapper">
-          {value.map((tag, index) => (
-            <span key={index} className="tag">
-              {tag}
-              <button
-                type="button"
-                className="tag-remove"
-                onClick={() => removeTag(index)}
-                aria-label={`Remove ${tag}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            onFocus={() => setShowDropdown(inputValue.length >= 1)}
-            placeholder={value.length === 0 ? placeholder : ''}
-            className="tag-input"
-            autoComplete="off"
-          />
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <div className="relative">
+        <div className="min-h-[42px] border border-gray-300 rounded-lg px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+          <div className="flex flex-wrap gap-1">
+            {value.map((tag, index) => (
+              <span key={index} className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                {tag}
+                <button
+                  type="button"
+                  className="ml-1 text-blue-600 hover:text-blue-800 focus:outline-none"
+                  onClick={() => removeTag(index)}
+                  aria-label={`Remove ${tag}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setShowDropdown(inputValue.length >= 1)}
+              placeholder={value.length === 0 ? placeholder : ''}
+              className="flex-1 min-w-[120px] border-none outline-none bg-transparent text-sm"
+              autoComplete="off"
+            />
+          </div>
         </div>
         
         {showDropdown && filteredSuggestions.length > 0 && (
-          <div ref={dropdownRef} className="suggestions-dropdown">
+          <div ref={dropdownRef} className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
             {filteredSuggestions.slice(0, 10).map((suggestion, index) => (
               <div
                 key={index}
-                className="suggestion-item"
+                className="px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
                 onClick={() => handleSuggestionClick(suggestion)}
               >
                 {suggestion}
